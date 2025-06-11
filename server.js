@@ -9,6 +9,11 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const User = require( './models/User' );
+const Project = require( './models/Project' );
+const Task = require( './models/Task' );
+const Message = require( './models/Message' );
+const Call = require( './models/Call' );
 require("dotenv").config();
 
 const app = express();
@@ -28,77 +33,6 @@ mongoose.connect(MONGO_URL).then(()=>{
   console.error("Database connection error:", err);
 });
 
-// User Schema
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  avatar: { type: String, default: '/images/default-avatar.png' },
-  status: { type: String, enum: ['online', 'offline', 'busy', 'away'], default: 'offline' },
-  lastSeen: { type: Date, default: Date.now }
-});
-
-// Project Schema
-const projectSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  description: { type: String },
-  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  createdAt: { type: Date, default: Date.now },
-  status: { type: String, enum: ['active', 'completed', 'paused'], default: 'active' }
-});
-
-// Task Schema
-const taskSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  description: { type: String },
-  project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
-  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  status: { type: String, enum: ['pending', 'in-progress', 'completed'], default: 'pending' },
-  priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
-  dueDate: { type: Date },
-  createdAt: { type: Date, default: Date.now }
-});
-
-// Message Schema
-const messageSchema = new mongoose.Schema({
-  content: { type: String, required: true },
-  sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  room: { type: String, required: true }, // project-id or direct-message-id
-  type: { type: String, enum: ['text', 'file', 'image'], default: 'text' },
-  fileName: { type: String },
-  fileUrl: { type: String },
-  timestamp: { type: Date, default: Date.now }
-});
-
-// File Schema
-const fileSchema = new mongoose.Schema({
-  filename: { type: String, required: true },
-  originalName: { type: String, required: true },
-  mimetype: { type: String, required: true },
-  size: { type: Number, required: true },
-  uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
-  uploadedAt: { type: Date, default: Date.now }
-});
-
-// Call Schema
-const callSchema = new mongoose.Schema({
-  roomId: { type: String, required: true, unique: true },
-  project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
-  participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  startTime: { type: Date, default: Date.now },
-  endTime: { type: Date },
-  status: { type: String, enum: ['active', 'ended'], default: 'active' }
-});
-
-const User = mongoose.model('User', userSchema);
-const Project = mongoose.model('Project', projectSchema);
-const Task = mongoose.model('Task', taskSchema);
-const Message = mongoose.model('Message', messageSchema);
-const File = mongoose.model('File', fileSchema);
-const Call = mongoose.model('Call', callSchema);
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -117,7 +51,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
-    mongoUrl: 'mongodb://localhost:27017/collaboration_system'
+    mongoUrl: MONGO_URL,
   }),
   cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 hours
 }));
