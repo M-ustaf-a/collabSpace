@@ -9,9 +9,11 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+require("dotenv").config();
 
 const app = express();
 const server = http.createServer(app);
+const MONGO_URL = process.env.ATLAS;
 const io = socketIo(server, {
   cors: {
     origin: "*",
@@ -20,9 +22,10 @@ const io = socketIo(server, {
 });
 
 // MongoDB Connection
-mongoose.connect('mongodb://localhost:27017/collaboration_system', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
+mongoose.connect(MONGO_URL).then(()=>{
+  console.log("Connected to the database");
+}).catch((err)=>{
+  console.error("Database connection error:", err);
 });
 
 // User Schema
