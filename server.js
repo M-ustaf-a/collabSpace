@@ -11,9 +11,10 @@ const path = require('path');
 const fs = require('fs');
 const User = require( './models/User' );
 const Project = require( './models/Project' );
-const Task = require( './models/Task' );
+const Task = require( './models/Task');
 const Message = require( './models/Message' );
 const Call = require( './models/Call' );
+const File = require("./models/File");
 require("dotenv").config();
 
 const app = express();
