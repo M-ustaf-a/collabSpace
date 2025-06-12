@@ -921,7 +921,7 @@
                 button.style.pointerEvents = 'auto';
             }
             
-            // Event listeners
+            // Event listeners for real-time validation
             passwordInput.addEventListener('input', function() {
                 checkPasswordStrength(this.value);
                 validateForm();
@@ -943,10 +943,8 @@
                 hideError();
             });
             
-            // Form submission validation
+            // Form submission with proper validation
             document.getElementById('registerForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                
                 const username = document.getElementById('username').value.trim();
                 const email = document.getElementById('email').value.trim();
                 const password = passwordInput.value;
@@ -955,58 +953,47 @@
                 // Reset previous error states
                 hideError();
                 
-                // Validate username
+                // Client-side validation before submission
                 if (username.length < 3) {
+                    e.preventDefault();
                     showError('Username must be at least 3 characters long');
                     document.getElementById('username').focus();
                     return;
                 }
                 
                 if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+                    e.preventDefault();
                     showError('Username can only contain letters, numbers, and underscores');
                     document.getElementById('username').focus();
                     return;
                 }
                 
-                // Validate email
                 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    e.preventDefault();
                     showError('Please enter a valid email address');
                     document.getElementById('email').focus();
                     return;
                 }
                 
-                // Validate password
                 if (!checkPasswordStrength(password)) {
+                    e.preventDefault();
                     showError('Password must meet all requirements');
                     passwordInput.focus();
                     return;
                 }
                 
-                // Validate password confirmation
                 if (password !== confirmPassword) {
+                    e.preventDefault();
                     showError('Passwords do not match');
                     confirmPasswordInput.focus();
                     return;
                 }
                 
-                // Show loading state
+                // Show loading state during submission
                 showLoading(submitBtn);
                 
-                // Simulate API call (replace with actual form submission)
-                setTimeout(() => {
-                    // For demo purposes, show success
-                    hideLoading(submitBtn);
-                    showSuccess('Account created successfully! Redirecting to login...');
-                    
-                    // Update button to show success
-                    submitBtn.innerHTML = '<i class="fas fa-check"></i><span>Account Created!</span>';
-                    submitBtn.style.background = 'linear-gradient(135deg, #4caf50, #45a049)';
-                    
-                    setTimeout(() => {
-                        // Redirect to login page
-                        window.location.href = '/login';
-                    }, 2000);
-                }, 2000);
+                // Allow form to submit naturally to backend
+                // The loading state will be cleared when the page redirects or reloads
             });
             
             // Add floating label effect
@@ -1036,25 +1023,6 @@
                 });
             });
 
-            // Real-time username availability check (simulation)
-            let usernameTimeout;
-            document.getElementById('username').addEventListener('input', function() {
-                const username = this.value.trim();
-                
-                clearTimeout(usernameTimeout);
-                
-                if (username.length >= 3) {
-                    usernameTimeout = setTimeout(() => {
-                        // Simulate checking username availability
-                        if (username.toLowerCase() === 'admin' || username.toLowerCase() === 'test') {
-                            this.classList.add('invalid');
-                            this.classList.remove('valid');
-                            showError('Username is already taken');
-                        }
-                    }, 1000);
-                }
-            });
-
             // Email format validation with better feedback
             document.getElementById('email').addEventListener('blur', function() {
                 const email = this.value.trim();
@@ -1079,6 +1047,13 @@
                     }
                 }
             });
+
+            // Check for server-side error messages (from backend)
+            const urlParams = new URLSearchParams(window.location.search);
+            const errorParam = urlParams.get('error');
+            if (errorParam) {
+                showError(decodeURIComponent(errorParam));
+            }
         });
 
         // External functions for links
@@ -1164,33 +1139,6 @@
             });
         }
 
-        // Add smooth scrolling for better UX
-        function smoothScrollToTop() {
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
-        }
-
-        // Show progress indication
-        function updateFormProgress() {
-            const inputs = document.querySelectorAll('input[required]');
-            const validInputs = Array.from(inputs).filter(input => 
-                input.classList.contains('valid') || 
-                (input.type === 'password' && input === document.getElementById('password') && checkPasswordStrength(input.value))
-            );
-            
-            const progress = (validInputs.length / inputs.length) * 100;
-            
-            // Could add a progress bar here if desired
-            // Example: document.getElementById('progressBar').style.width = progress + '%';
-        }
-
-        // Call progress update on input changes
-        document.querySelectorAll('input').forEach(input => {
-            input.addEventListener('input', updateFormProgress);
-        });
-
         // Add haptic feedback for mobile devices
         function triggerHapticFeedback(type = 'light') {
             if (navigator.vibrate) {
@@ -1213,21 +1161,6 @@
                 triggerHapticFeedback('light');
             }
         });
-
-        // Add error haptic feedback
-        const originalShowError = window.showError || function() {};
-        window.showError = function(message) {
-            triggerHapticFeedback('error');
-            const errorDiv = document.getElementById('errorMessage');
-            const errorText = document.getElementById('errorText');
-            errorText.textContent = message;
-            errorDiv.classList.add('show');
-            errorDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            
-            setTimeout(() => {
-                document.getElementById('errorMessage').classList.remove('show');
-            }, 5000);
-        };
     </script>
 </body>
 </html>

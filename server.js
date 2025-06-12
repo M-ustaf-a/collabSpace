@@ -9,11 +9,11 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const User = require( './models/User' );
-const Project = require( './models/Project' );
-const Task = require( './models/Task');
-const Message = require( './models/Message' );
-const Call = require( './models/Call' );
+const User = require('./models/User');
+const Project = require('./models/Project');
+const Task = require('./models/Task');
+const Message = require('./models/Message');
+const Call = require('./models/Call');
 const File = require("./models/File");
 require("dotenv").config();
 
@@ -28,12 +28,11 @@ const io = socketIo(server, {
 });
 
 // MongoDB Connection
-mongoose.connect(MONGO_URL).then(()=>{
+mongoose.connect(MONGO_URL).then(() => {
   console.log("Connected to the database");
-}).catch((err)=>{
+}).catch((err) => {
   console.error("Database connection error:", err);
 });
-
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -48,13 +47,17 @@ if (!fs.existsSync('uploads')) {
 
 // Session middleware
 app.use(session({
-  secret: 'your-secret-key',
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
     mongoUrl: MONGO_URL,
   }),
-  cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 hours
+  cookie: { 
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    secure: process.env.NODE_ENV === 'production', // HTTPS in production
+    httpOnly: true // Prevent XSS
+  }
 }));
 
 // View engine
@@ -74,7 +77,11 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: function (req, file, cb) {
+    // Add file type restrictions if needed
+    cb(null, true);
+  }
 });
 
 // Authentication middleware
@@ -84,6 +91,28 @@ const requireAuth = (req, res, next) => {
   } else {
     res.redirect('/login');
   }
+};
+
+// Input validation helpers
+const validateUsername = (username) => {
+  return username && 
+         username.length >= 3 && 
+         username.length <= 30 && 
+         /^[a-zA-Z0-9_]+$/.test(username);
+};
+
+const validateEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return email && emailRegex.test(email) && email.length <= 100;
+};
+
+const validatePassword = (password) => {
+  return password && 
+         password.length >= 8 && 
+         password.length <= 128 &&
+         /[A-Z]/.test(password) && 
+         /[a-z]/.test(password) && 
+         /[0-9]/.test(password);
 };
 
 // Routes
@@ -96,52 +125,174 @@ app.get('/', (req, res) => {
 });
 
 app.get('/login', (req, res) => {
-  res.render('login');
+  if (req.session.userId) {
+    res.redirect('/dashboard');
+  } else {
+    res.render('login', { error: null });
+  }
 });
 
 app.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    const user = await User.findOne({ username });
+    
+    // Basic input validation
+    if (!username || !password) {
+      return res.render('login', { error: 'Username and password are required' });
+    }
+
+    // Find user by username or email
+    const user = await User.findOne({
+      $or: [
+        { username: username.toLowerCase() },
+        { email: username.toLowerCase() }
+      ]
+    });
     
     if (user && await bcrypt.compare(password, user.password)) {
       req.session.userId = user._id;
-      await User.findByIdAndUpdate(user._id, { status: 'online' });
+      await User.findByIdAndUpdate(user._id, { 
+        status: 'online',
+        lastLogin: new Date()
+      });
       res.redirect('/dashboard');
     } else {
-      res.render('login', { error: 'Invalid credentials' });
+      res.render('login', { error: 'Invalid username or password' });
     }
   } catch (error) {
-    res.render('login', { error: 'Login failed' });
+    console.error('Login error:', error);
+    res.render('login', { error: 'An error occurred during login. Please try again.' });
   }
 });
 
 app.get('/register', (req, res) => {
-  res.render('register');
+  if (req.session.userId) {
+    res.redirect('/dashboard');
+  } else {
+    res.render('register', { error: null });
+  }
 });
 
 app.post('/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const { username, email, password, confirmPassword } = req.body;
     
+    console.log('Registration attempt:', { username, email }); // Debug log
+    
+    // Input validation
+    if (!username || !email || !password || !confirmPassword) {
+      return res.render('register', { 
+        error: 'All fields are required' 
+      });
+    }
+
+    // Validate username
+    if (!validateUsername(username)) {
+      return res.render('register', { 
+        error: 'Username must be 3-30 characters long and contain only letters, numbers, and underscores' 
+      });
+    }
+
+    // Validate email
+    if (!validateEmail(email)) {
+      return res.render('register', { 
+        error: 'Please enter a valid email address' 
+      });
+    }
+
+    // Validate password
+    if (!validatePassword(password)) {
+      return res.render('register', { 
+        error: 'Password must be at least 8 characters long and contain uppercase, lowercase, and number' 
+      });
+    }
+
+    // Check password confirmation
+    if (password !== confirmPassword) {
+      return res.render('register', { 
+        error: 'Passwords do not match' 
+      });
+    }
+
+    // Check if username already exists
+    const existingUsername = await User.findOne({ 
+      username: username.toLowerCase() 
+    });
+    
+    if (existingUsername) {
+      return res.render('register', { 
+        error: 'Username is already taken' 
+      });
+    }
+
+    // Check if email already exists
+    const existingEmail = await User.findOne({ 
+      email: email.toLowerCase() 
+    });
+    
+    if (existingEmail) {
+      return res.render('register', { 
+        error: 'Email is already registered' 
+      });
+    }
+
+    // Hash password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    
+    // Create new user
     const user = new User({
-      username,
-      email,
-      password: hashedPassword
+      username: username.toLowerCase(),
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      status: 'offline',
+      createdAt: new Date()
     });
     
     await user.save();
+    console.log('User created successfully:', user.username); // Debug log
+    
+    // Auto-login after registration
     req.session.userId = user._id;
+    await User.findByIdAndUpdate(user._id, { 
+      status: 'online',
+      lastLogin: new Date()
+    });
+    
     res.redirect('/dashboard');
+    
   } catch (error) {
-    res.render('register', { error: 'Registration failed' });
+    console.error('Registration error:', error);
+    
+    // Handle duplicate key errors (in case of race conditions)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      const message = field === 'username' ? 'Username is already taken' : 'Email is already registered';
+      return res.render('register', { error: message });
+    }
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const firstError = Object.values(error.errors)[0];
+      return res.render('register', { 
+        error: firstError.message || 'Please check your input and try again' 
+      });
+    }
+    
+    res.render('register', { 
+      error: 'Registration failed. Please try again.' 
+    });
   }
 });
 
 app.get('/dashboard', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.session.userId);
+    if (!user) {
+      req.session.destroy();
+      return res.redirect('/login');
+    }
+    
     const projects = await Project.find({
       $or: [
         { owner: req.session.userId },
@@ -151,6 +302,7 @@ app.get('/dashboard', requireAuth, async (req, res) => {
     
     res.render('dashboard', { user, projects });
   } catch (error) {
+    console.error('Dashboard error:', error);
     res.redirect('/login');
   }
 });
@@ -159,6 +311,13 @@ app.get('/project/:id', requireAuth, async (req, res) => {
   try {
     const project = await Project.findById(req.params.id)
       .populate('owner members');
+    
+    // Check if user has access to this project
+    if (!project || (!project.owner.equals(req.session.userId) && 
+                     !project.members.some(member => member._id.equals(req.session.userId)))) {
+      return res.redirect('/dashboard');
+    }
+    
     const tasks = await Task.find({ project: req.params.id })
       .populate('assignedTo createdBy');
     const files = await File.find({ project: req.params.id })
@@ -167,6 +326,7 @@ app.get('/project/:id', requireAuth, async (req, res) => {
     
     res.render('project', { project, tasks, files, user });
   } catch (error) {
+    console.error('Project view error:', error);
     res.redirect('/dashboard');
   }
 });
@@ -174,9 +334,15 @@ app.get('/project/:id', requireAuth, async (req, res) => {
 app.post('/project/create', requireAuth, async (req, res) => {
   try {
     const { name, description } = req.body;
+    
+    // Validate input
+    if (!name || name.trim().length === 0) {
+      return res.redirect('/dashboard?error=Project name is required');
+    }
+    
     const project = new Project({
-      name,
-      description,
+      name: name.trim(),
+      description: description ? description.trim() : '',
       owner: req.session.userId,
       members: [req.session.userId]
     });
@@ -184,59 +350,100 @@ app.post('/project/create', requireAuth, async (req, res) => {
     await project.save();
     res.redirect('/dashboard');
   } catch (error) {
-    res.redirect('/dashboard');
+    console.error('Project creation error:', error);
+    res.redirect('/dashboard?error=Failed to create project');
   }
 });
 
 app.post('/project/:id/invite', requireAuth, async (req, res) => {
   try {
     const { username } = req.body;
-    const user = await User.findOne({ username });
+    const project = await Project.findById(req.params.id);
+    
+    // Check if user owns the project
+    if (!project || !project.owner.equals(req.session.userId)) {
+      return res.redirect(`/project/${req.params.id}?error=Access denied`);
+    }
+    
+    const user = await User.findOne({ username: username.toLowerCase() });
     
     if (user) {
       await Project.findByIdAndUpdate(req.params.id, {
         $addToSet: { members: user._id }
       });
+      res.redirect(`/project/${req.params.id}?success=User invited successfully`);
+    } else {
+      res.redirect(`/project/${req.params.id}?error=User not found`);
     }
-    
-    res.redirect(`/project/${req.params.id}`);
   } catch (error) {
-    res.redirect(`/project/${req.params.id}`);
+    console.error('Invite error:', error);
+    res.redirect(`/project/${req.params.id}?error=Failed to invite user`);
   }
 });
 
 app.post('/task/create', requireAuth, async (req, res) => {
   try {
     const { title, description, projectId, assignedTo, priority, dueDate } = req.body;
+    
+    // Validate project access
+    const project = await Project.findById(projectId);
+    if (!project || (!project.owner.equals(req.session.userId) && 
+                     !project.members.includes(req.session.userId))) {
+      return res.redirect('/dashboard?error=Access denied');
+    }
+    
     const task = new Task({
-      title,
-      description,
+      title: title.trim(),
+      description: description ? description.trim() : '',
       project: projectId,
       assignedTo: assignedTo || null,
       createdBy: req.session.userId,
-      priority,
+      priority: priority || 'medium',
       dueDate: dueDate || null
     });
     
     await task.save();
     res.redirect(`/project/${projectId}`);
   } catch (error) {
-    res.redirect('/dashboard');
+    console.error('Task creation error:', error);
+    res.redirect('/dashboard?error=Failed to create task');
   }
 });
 
 app.post('/task/:id/update', requireAuth, async (req, res) => {
   try {
     const { status } = req.body;
-    const task = await Task.findByIdAndUpdate(req.params.id, { status });
+    const task = await Task.findById(req.params.id);
+    
+    if (!task) {
+      return res.redirect('/dashboard?error=Task not found');
+    }
+    
+    // Validate project access
+    const project = await Project.findById(task.project);
+    if (!project || (!project.owner.equals(req.session.userId) && 
+                     !project.members.includes(req.session.userId))) {
+      return res.redirect('/dashboard?error=Access denied');
+    }
+    
+    await Task.findByIdAndUpdate(req.params.id, { status });
     res.redirect(`/project/${task.project}`);
   } catch (error) {
-    res.redirect('/dashboard');
+    console.error('Task update error:', error);
+    res.redirect('/dashboard?error=Failed to update task');
   }
 });
 
 app.post('/upload/:projectId', requireAuth, upload.single('file'), async (req, res) => {
   try {
+    const project = await Project.findById(req.params.projectId);
+    
+    // Validate project access
+    if (!project || (!project.owner.equals(req.session.userId) && 
+                     !project.members.includes(req.session.userId))) {
+      return res.redirect('/dashboard?error=Access denied');
+    }
+    
     if (req.file) {
       const file = new File({
         filename: req.file.filename,
@@ -253,11 +460,14 @@ app.post('/upload/:projectId', requireAuth, upload.single('file'), async (req, r
       io.to(`project-${req.params.projectId}`).emit('fileUploaded', {
         file: await file.populate('uploadedBy')
       });
+      
+      res.redirect(`/project/${req.params.projectId}?success=File uploaded successfully`);
+    } else {
+      res.redirect(`/project/${req.params.projectId}?error=No file selected`);
     }
-    
-    res.redirect(`/project/${req.params.projectId}`);
   } catch (error) {
-    res.redirect(`/project/${req.params.projectId}`);
+    console.error('File upload error:', error);
+    res.redirect(`/project/${req.params.projectId}?error=Failed to upload file`);
   }
 });
 
@@ -266,13 +476,53 @@ app.get('/call/:roomId', requireAuth, async (req, res) => {
     const user = await User.findById(req.session.userId);
     res.render('call', { roomId: req.params.roomId, user });
   } catch (error) {
+    console.error('Call page error:', error);
     res.redirect('/dashboard');
   }
 });
 
 app.post('/logout', (req, res) => {
-  req.session.destroy();
-  res.redirect('/');
+  const userId = req.session.userId;
+  
+  req.session.destroy(async (err) => {
+    if (err) {
+      console.error('Logout error:', err);
+    }
+    
+    // Update user status
+    try {
+      if (userId) {
+        await User.findByIdAndUpdate(userId, { 
+          status: 'offline',
+          lastSeen: new Date()
+        });
+      }
+    } catch (error) {
+      console.error('Error updating user status on logout:', error);
+    }
+    
+    res.redirect('/');
+  });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  
+  if (req.session.userId) {
+    res.redirect('/dashboard?error=An unexpected error occurred');
+  } else {
+    res.redirect('/?error=An unexpected error occurred');
+  }
+});
+
+// 404 handler
+app.use((req, res) => {
+  if (req.session.userId) {
+    res.redirect('/dashboard');
+  } else {
+    res.redirect('/');
+  }
 });
 
 // Socket.IO handling
@@ -282,20 +532,24 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('userConnected', async (userId) => {
-    connectedUsers.set(socket.id, userId);
-    await User.findByIdAndUpdate(userId, { status: 'online' });
-    
-    // Join user to their project rooms
-    const projects = await Project.find({
-      $or: [{ owner: userId }, { members: userId }]
-    });
-    
-    projects.forEach(project => {
-      socket.join(`project-${project._id}`);
-    });
-    
-    // Broadcast user online status
-    socket.broadcast.emit('userStatusChanged', { userId, status: 'online' });
+    try {
+      connectedUsers.set(socket.id, userId);
+      await User.findByIdAndUpdate(userId, { status: 'online' });
+      
+      // Join user to their project rooms
+      const projects = await Project.find({
+        $or: [{ owner: userId }, { members: userId }]
+      });
+      
+      projects.forEach(project => {
+        socket.join(`project-${project._id}`);
+      });
+      
+      // Broadcast user online status
+      socket.broadcast.emit('userStatusChanged', { userId, status: 'online' });
+    } catch (error) {
+      console.error('Error in userConnected:', error);
+    }
   });
 
   socket.on('joinRoom', (room) => {
@@ -334,25 +588,33 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join-call', async (data) => {
-    const { roomId, userId } = data;
-    socket.join(roomId);
-    
-    // Update or create call record
-    let call = await Call.findOne({ roomId, status: 'active' });
-    if (!call) {
-      call = new Call({ roomId, participants: [userId] });
-    } else {
-      call.participants.addToSet(userId);
+    try {
+      const { roomId, userId } = data;
+      socket.join(roomId);
+      
+      // Update or create call record
+      let call = await Call.findOne({ roomId, status: 'active' });
+      if (!call) {
+        call = new Call({ roomId, participants: [userId] });
+      } else {
+        call.participants.addToSet(userId);
+      }
+      await call.save();
+      
+      socket.to(roomId).emit('user-joined', { userId, socketId: socket.id });
+    } catch (error) {
+      console.error('Error joining call:', error);
     }
-    await call.save();
-    
-    socket.to(roomId).emit('user-joined', { userId, socketId: socket.id });
   });
 
   socket.on('leave-call', async (data) => {
-    const { roomId, userId } = data;
-    socket.leave(roomId);
-    socket.to(roomId).emit('user-left', { userId, socketId: socket.id });
+    try {
+      const { roomId, userId } = data;
+      socket.leave(roomId);
+      socket.to(roomId).emit('user-left', { userId, socketId: socket.id });
+    } catch (error) {
+      console.error('Error leaving call:', error);
+    }
   });
 
   socket.on('typing', (data) => {
@@ -369,18 +631,22 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', async () => {
-    const userId = connectedUsers.get(socket.id);
-    if (userId) {
-      await User.findByIdAndUpdate(userId, { 
-        status: 'offline',
-        lastSeen: new Date()
-      });
+    try {
+      const userId = connectedUsers.get(socket.id);
+      if (userId) {
+        await User.findByIdAndUpdate(userId, { 
+          status: 'offline',
+          lastSeen: new Date()
+        });
+        
+        socket.broadcast.emit('userStatusChanged', { userId, status: 'offline' });
+        connectedUsers.delete(socket.id);
+      }
       
-      socket.broadcast.emit('userStatusChanged', { userId, status: 'offline' });
-      connectedUsers.delete(socket.id);
+      console.log('User disconnected:', socket.id);
+    } catch (error) {
+      console.error('Error in disconnect handler:', error);
     }
-    
-    console.log('User disconnected:', socket.id);
   });
 });
 
