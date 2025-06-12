@@ -711,10 +711,8 @@
             });
         });
         
-        // Enhanced form validation
+        // Fixed form submission - now properly submits to server
         document.getElementById('loginForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
             const loginBtn = document.getElementById('loginBtn');
@@ -725,8 +723,9 @@
                 input.style.borderColor = '';
             });
             
-            // Validation
+            // Client-side validation only
             if (!username || !password) {
+                e.preventDefault(); // Prevent form submission
                 showError('Please fill in all fields');
                 if (!username) highlightField('username');
                 if (!password) highlightField('password');
@@ -734,30 +733,24 @@
             }
             
             if (username.length < 3) {
+                e.preventDefault(); // Prevent form submission
                 showError('Username must be at least 3 characters long');
                 highlightField('username');
                 return;
             }
             
             if (password.length < 6) {
+                e.preventDefault(); // Prevent form submission
                 showError('Password must be at least 6 characters long');
                 highlightField('password');
                 return;
             }
             
-            // Show loading state
+            // Show loading state while form submits
             showLoading(loginBtn);
             
-            // Simulate API call (replace with actual form submission)
-            setTimeout(() => {
-                // For demo purposes, show success or error
-                if (username === 'demo' && password === 'password') {
-                    showSuccess();
-                } else {
-                    hideLoading(loginBtn);
-                    showError('Invalid username or password');
-                }
-            }, 2000);
+            // Form will now submit normally to your server
+            // Remove the preventDefault() to allow normal form submission
         });
 
         function showError(message) {
@@ -780,26 +773,12 @@
 
         function showLoading(button) {
             button.classList.add('loading');
-            button.style.pointerEvents = 'none';
             button.querySelector('span').textContent = 'Signing In...';
         }
 
         function hideLoading(button) {
             button.classList.remove('loading');
-            button.style.pointerEvents = 'auto';
             button.querySelector('span').textContent = 'Sign In';
-        }
-
-        function showSuccess() {
-            const loginBtn = document.getElementById('loginBtn');
-            hideLoading(loginBtn);
-            loginBtn.innerHTML = '<i class="fas fa-check"></i><span>Success!</span>';
-            loginBtn.style.background = 'linear-gradient(135deg, #4caf50, #45a049)';
-            
-            setTimeout(() => {
-                // Redirect to dashboard
-                window.location.href = '/dashboard';
-            }, 1000);
         }
 
         function showForgotPassword() {
@@ -813,14 +792,34 @@
             }
         }
 
-        // Keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
-            // Alt + Enter to submit form
-            if (e.altKey && e.key === 'Enter') {
-                e.preventDefault();
-                document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+        // Handle server-side errors (if redirected back with error)
+        const urlParams = new URLSearchParams(window.location.search);
+        const error = urlParams.get('error');
+        if (error) {
+            let errorMessage = 'Login failed. Please try again.';
+            
+            switch (error) {
+                case 'invalid_credentials':
+                    errorMessage = 'Invalid username or password';
+                    break;
+                case 'account_locked':
+                    errorMessage = 'Account is locked. Contact administrator.';
+                    break;
+                case 'account_disabled':
+                    errorMessage = 'Account is disabled. Contact administrator.';
+                    break;
+                case 'too_many_attempts':
+                    errorMessage = 'Too many login attempts. Please try again later.';
+                    break;
+                default:
+                    errorMessage = 'Login failed. Please try again.';
             }
             
+            showError(errorMessage);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
             // Escape to clear form
             if (e.key === 'Escape') {
                 document.getElementById('username').value = '';
@@ -839,7 +838,7 @@
             });
         });
 
-        // Auto-hide error message after 5 seconds
+        // Auto-hide error message after 8 seconds
         let errorTimeout;
         function showError(message) {
             const errorDiv = document.getElementById('errorMessage');
@@ -851,7 +850,7 @@
             clearTimeout(errorTimeout);
             errorTimeout = setTimeout(() => {
                 hideError();
-            }, 5000);
+            }, 8000);
         }
 
         // Handle paste events for better UX
@@ -865,6 +864,12 @@
             setTimeout(() => {
                 this.parentElement.classList.add('focused');
             }, 10);
+        });
+
+        // Reset loading state if page is refreshed or back button is used
+        window.addEventListener('pageshow', function() {
+            const loginBtn = document.getElementById('loginBtn');
+            hideLoading(loginBtn);
         });
     </script>
 </body>

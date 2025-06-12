@@ -108,11 +108,8 @@ const validateEmail = (email) => {
 
 const validatePassword = (password) => {
   return password && 
-         password.length >= 8 && 
-         password.length <= 128 &&
-         /[A-Z]/.test(password) && 
-         /[a-z]/.test(password) && 
-         /[0-9]/.test(password);
+         password.length >= 6 && // Changed from 8 to 6 to match frontend validation
+         password.length <= 128;
 };
 
 // Routes
@@ -128,7 +125,8 @@ app.get('/login', (req, res) => {
   if (req.session.userId) {
     res.redirect('/dashboard');
   } else {
-    res.render('login', { error: null });
+    const error = req.query.error || null;
+    res.render('login', { error });
   }
 });
 
@@ -136,27 +134,43 @@ app.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
+    console.log('Login attempt:', { username }); // Debug log
+    
     // Basic input validation
     if (!username || !password) {
+      console.log('Missing username or password');
       return res.render('login', { error: 'Username and password are required' });
     }
 
-    // Find user by username or email
+    // Trim whitespace
+    const trimmedUsername = username.trim();
+    const trimmedPassword = password.trim();
+
+    // Find user by username or email (case insensitive)
     const user = await User.findOne({
       $or: [
-        { username: username.toLowerCase() },
-        { email: username.toLowerCase() }
+        { username: { $regex: new RegExp('^' + trimmedUsername + '$', 'i') } },
+        { email: { $regex: new RegExp('^' + trimmedUsername + '$', 'i') } }
       ]
     });
     
-    if (user && await bcrypt.compare(password, user.password)) {
+    console.log('User found:', user ? user.username : 'No user found'); // Debug log
+    
+    if (user && await bcrypt.compare(trimmedPassword, user.password)) {
+      console.log('Password verified successfully');
       req.session.userId = user._id;
+      req.session.username = user.username;
+      
+      // Update user status
       await User.findByIdAndUpdate(user._id, { 
         status: 'online',
         lastLogin: new Date()
       });
+      
+      console.log('Redirecting to dashboard');
       res.redirect('/dashboard');
     } else {
+      console.log('Invalid credentials');
       res.render('login', { error: 'Invalid username or password' });
     }
   } catch (error) {
@@ -169,7 +183,8 @@ app.get('/register', (req, res) => {
   if (req.session.userId) {
     res.redirect('/dashboard');
   } else {
-    res.render('register', { error: null });
+    const error = req.query.error || null;
+    res.render('register', { error });
   }
 });
 
@@ -186,15 +201,19 @@ app.post('/register', async (req, res) => {
       });
     }
 
+    // Trim inputs
+    const trimmedUsername = username.trim();
+    const trimmedEmail = email.trim();
+
     // Validate username
-    if (!validateUsername(username)) {
+    if (!validateUsername(trimmedUsername)) {
       return res.render('register', { 
         error: 'Username must be 3-30 characters long and contain only letters, numbers, and underscores' 
       });
     }
 
     // Validate email
-    if (!validateEmail(email)) {
+    if (!validateEmail(trimmedEmail)) {
       return res.render('register', { 
         error: 'Please enter a valid email address' 
       });
@@ -203,7 +222,7 @@ app.post('/register', async (req, res) => {
     // Validate password
     if (!validatePassword(password)) {
       return res.render('register', { 
-        error: 'Password must be at least 8 characters long and contain uppercase, lowercase, and number' 
+        error: 'Password must be at least 6 characters long' 
       });
     }
 
@@ -214,9 +233,9 @@ app.post('/register', async (req, res) => {
       });
     }
 
-    // Check if username already exists
+    // Check if username already exists (case insensitive)
     const existingUsername = await User.findOne({ 
-      username: username.toLowerCase() 
+      username: { $regex: new RegExp('^' + trimmedUsername + '$', 'i') }
     });
     
     if (existingUsername) {
@@ -225,9 +244,9 @@ app.post('/register', async (req, res) => {
       });
     }
 
-    // Check if email already exists
+    // Check if email already exists (case insensitive)
     const existingEmail = await User.findOne({ 
-      email: email.toLowerCase() 
+      email: { $regex: new RegExp('^' + trimmedEmail + '$', 'i') }
     });
     
     if (existingEmail) {
@@ -242,8 +261,8 @@ app.post('/register', async (req, res) => {
     
     // Create new user
     const user = new User({
-      username: username.toLowerCase(),
-      email: email.toLowerCase(),
+      username: trimmedUsername.toLowerCase(),
+      email: trimmedEmail.toLowerCase(),
       password: hashedPassword,
       status: 'offline',
       createdAt: new Date()
@@ -254,6 +273,8 @@ app.post('/register', async (req, res) => {
     
     // Auto-login after registration
     req.session.userId = user._id;
+    req.session.username = user.username;
+    
     await User.findByIdAndUpdate(user._id, { 
       status: 'online',
       lastLogin: new Date()
@@ -503,6 +524,30 @@ app.post('/logout', (req, res) => {
     
     res.redirect('/');
   });
+});
+
+// Test route for creating a demo user
+app.get('/create-demo-user', async (req, res) => {
+  try {
+    const hashedPassword = await bcrypt.hash('password', 12);
+    
+    const demoUser = new User({
+      username: 'demo',
+      email: 'demo@example.com',
+      password: hashedPassword,
+      status: 'offline',
+      createdAt: new Date()
+    });
+    
+    await demoUser.save();
+    res.json({ message: 'Demo user created successfully' });
+  } catch (error) {
+    if (error.code === 11000) {
+      res.json({ message: 'Demo user already exists' });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
+  }
 });
 
 // Error handling middleware
