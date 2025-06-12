@@ -473,7 +473,7 @@
 
             .form-group input {
                 padding: 0.875rem 1rem;
-                font-size: 16px; /* Prevents zoom on iOS */
+                font-size: 16px;
             }
 
             .form-group.has-icon input {
@@ -508,50 +508,6 @@
             }
         }
 
-        /* High contrast mode support */
-        @media (prefers-contrast: high) {
-            .form-group input {
-                border-width: 3px;
-            }
-
-            .btn {
-                border: 2px solid transparent;
-            }
-
-            .btn-primary {
-                border-color: var(--primary-dark);
-            }
-
-            .btn-secondary {
-                border-color: var(--text-primary);
-            }
-        }
-
-        /* Reduced motion preferences */
-        @media (prefers-reduced-motion: reduce) {
-            * {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
-
-            .login-container {
-                animation: none;
-            }
-
-            .login-header::before {
-                animation: none;
-            }
-        }
-
-        /* Dark mode support (if needed) */
-        @media (prefers-color-scheme: dark) {
-            .form-group input {
-                background: var(--gray-50);
-            }
-        }
-
-        /* Focus visible for keyboard navigation */
         .btn:focus-visible,
         .form-group input:focus-visible,
         .forgot-password a:focus-visible,
@@ -560,7 +516,6 @@
             outline-offset: 2px;
         }
 
-        /* Touch targets for mobile */
         @media (pointer: coarse) {
             .btn {
                 min-height: 48px;
@@ -666,14 +621,11 @@
     </div>
 
     <script>
-        // Enhanced interactive effects
         document.addEventListener('DOMContentLoaded', function() {
-            // Focus on username field
             setTimeout(() => {
                 document.getElementById('username').focus();
             }, 300);
             
-            // Enhanced floating label effect
             const inputs = document.querySelectorAll('input');
             inputs.forEach(input => {
                 input.addEventListener('focus', function() {
@@ -686,19 +638,16 @@
                     }
                 });
                 
-                // Check if input has value on load
                 if (input.value.trim()) {
                     input.parentElement.classList.add('focused');
                 }
 
-                // Real-time validation feedback
                 input.addEventListener('input', function() {
                     this.style.borderColor = '';
                     hideError();
                 });
             });
 
-            // Animate feature items
             const featureItems = document.querySelectorAll('.feature-item');
             featureItems.forEach((item, index) => {
                 item.style.opacity = '0';
@@ -711,7 +660,7 @@
             });
         });
         
-        // Fixed form submission - now properly submits to server
+        // FIXED: Form submission handler
         document.getElementById('loginForm').addEventListener('submit', function(e) {
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
@@ -723,34 +672,34 @@
                 input.style.borderColor = '';
             });
             
-            // Client-side validation only
+            // Client-side validation
             if (!username || !password) {
-                e.preventDefault(); // Prevent form submission
+                e.preventDefault(); // Only prevent if validation fails
                 showError('Please fill in all fields');
                 if (!username) highlightField('username');
                 if (!password) highlightField('password');
-                return;
+                return false;
             }
             
             if (username.length < 3) {
-                e.preventDefault(); // Prevent form submission
+                e.preventDefault(); // Only prevent if validation fails
                 showError('Username must be at least 3 characters long');
                 highlightField('username');
-                return;
+                return false;
             }
             
             if (password.length < 6) {
-                e.preventDefault(); // Prevent form submission
+                e.preventDefault(); // Only prevent if validation fails
                 showError('Password must be at least 6 characters long');
                 highlightField('password');
-                return;
+                return false;
             }
             
-            // Show loading state while form submits
+            // Show loading state
             showLoading(loginBtn);
             
-            // Form will now submit normally to your server
-            // Remove the preventDefault() to allow normal form submission
+            // Form will submit naturally after this point
+            return true;
         });
 
         function showError(message) {
@@ -759,6 +708,11 @@
             errorText.textContent = message;
             errorDiv.style.display = 'flex';
             errorDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            
+            clearTimeout(window.errorTimeout);
+            window.errorTimeout = setTimeout(() => {
+                hideError();
+            }, 5000);
         }
 
         function hideError() {
@@ -773,17 +727,12 @@
 
         function showLoading(button) {
             button.classList.add('loading');
+            button.style.pointerEvents = 'none';
             button.querySelector('span').textContent = 'Signing In...';
-        }
-
-        function hideLoading(button) {
-            button.classList.remove('loading');
-            button.querySelector('span').textContent = 'Sign In';
         }
 
         function showForgotPassword() {
             if (confirm('Contact your administrator to reset your password.\n\nWould you like to copy the admin email to clipboard?')) {
-                // Copy admin email to clipboard
                 navigator.clipboard.writeText('admin@collabspace.com').then(() => {
                     alert('Admin email copied to clipboard: admin@collabspace.com');
                 }).catch(() => {
@@ -792,35 +741,12 @@
             }
         }
 
-        // Handle server-side errors (if redirected back with error)
-        const urlParams = new URLSearchParams(window.location.search);
-        const error = urlParams.get('error');
-        if (error) {
-            let errorMessage = 'Login failed. Please try again.';
-            
-            switch (error) {
-                case 'invalid_credentials':
-                    errorMessage = 'Invalid username or password';
-                    break;
-                case 'account_locked':
-                    errorMessage = 'Account is locked. Contact administrator.';
-                    break;
-                case 'account_disabled':
-                    errorMessage = 'Account is disabled. Contact administrator.';
-                    break;
-                case 'too_many_attempts':
-                    errorMessage = 'Too many login attempts. Please try again later.';
-                    break;
-                default:
-                    errorMessage = 'Login failed. Please try again.';
+        document.addEventListener('keydown', function(e) {
+            if (e.altKey && e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('loginForm').dispatchEvent(new Event('submit'));
             }
             
-            showError(errorMessage);
-        }
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
-            // Escape to clear form
             if (e.key === 'Escape') {
                 document.getElementById('username').value = '';
                 document.getElementById('password').value = '';
@@ -829,7 +755,6 @@
             }
         });
 
-        // Enhanced accessibility
         document.querySelectorAll('input').forEach(input => {
             input.addEventListener('invalid', function(e) {
                 e.preventDefault();
@@ -838,22 +763,6 @@
             });
         });
 
-        // Auto-hide error message after 8 seconds
-        let errorTimeout;
-        function showError(message) {
-            const errorDiv = document.getElementById('errorMessage');
-            const errorText = document.getElementById('errorText');
-            errorText.textContent = message;
-            errorDiv.style.display = 'flex';
-            errorDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            
-            clearTimeout(errorTimeout);
-            errorTimeout = setTimeout(() => {
-                hideError();
-            }, 8000);
-        }
-
-        // Handle paste events for better UX
         document.getElementById('username').addEventListener('paste', function(e) {
             setTimeout(() => {
                 this.parentElement.classList.add('focused');
@@ -864,12 +773,6 @@
             setTimeout(() => {
                 this.parentElement.classList.add('focused');
             }, 10);
-        });
-
-        // Reset loading state if page is refreshed or back button is used
-        window.addEventListener('pageshow', function() {
-            const loginBtn = document.getElementById('loginBtn');
-            hideLoading(loginBtn);
         });
     </script>
 </body>
